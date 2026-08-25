@@ -91,45 +91,40 @@ fastify.register(async (fastify) => {
         // Control initial session with OpenAI
         const initializeSession = () => {
             const sessionUpdate = {
-                type: 'session.update',
-                session: {
-                    type: 'realtime',
-                    model: "gpt-realtime",
-                    output_modalities: ["audio"],
-                    audio: {
-                        input: { format: { type: 'audio/pcmu' }, turn_detection: { type: "server_vad" } },
-                        output: { format: { type: 'audio/pcmu' }, voice: VOICE },
-                    },
-                    instructions: SYSTEM_MESSAGE,
+            type: 'session.update',
+            session: {
+                type: 'realtime',
+                model: "gpt-realtime",
+                output_modalities: ["audio"],
+                audio: {
+                    input: { format: { type: 'audio/pcmu' }, turn_detection: { type: "server_vad" } },
+                    output: { format: { type: 'audio/pcmu' }, voice: VOICE },
                 },
-            };
-
-            console.log('Sending session update:', JSON.stringify(sessionUpdate));
-            openAiWs.send(JSON.stringify(sessionUpdate));
-
-            // Uncomment the following line to have AI speak first:
-             sendInitialConversationItem();
+                instructions: SYSTEM_MESSAGE,
+            },
         };
 
-        // Send initial conversation item if AI talks first
-        const sendInitialConversationItem = () => {
-            const initialConversationItem = {
-                type: 'conversation.item.create',
-                item: {
-                    type: 'message',
-                    role: 'user',
-                    content: [
-                        {
-                            type: 'input_text',
-                            text: "Say in Arabic: أهلاً بك، معك المساعد الذكي للأستاذ ينال، كيف يمكنني مساعدتك؟"                      }
-                    ]
-                }
-            };
+        console.log('Sending session update:', JSON.stringify(sessionUpdate));
+        openAiWs.send(JSON.stringify(sessionUpdate));
 
-            if (SHOW_TIMING_MATH) console.log('Sending initial conversation item:', JSON.stringify(initialConversationItem));
-            openAiWs.send(JSON.stringify(initialConversationItem));
-            openAiWs.send(JSON.stringify({ type: 'response.create' }));
+        // إرسال الترحيب العربي فوراً عند فتح الاتصال
+        const greetingItem = {
+            type: 'conversation.item.create',
+            item: {
+                type: 'message',
+                role: 'user',
+                content: [
+                    {
+                        type: 'input_text',
+                        text: "قل الآن باللغة العربية: أهلاً بك، معك المساعد الذكي للأستاذ ينال. كيف يمكنني مساعدتك اليوم؟"
+                    }
+                ]
+            }
         };
+        openAiWs.send(JSON.stringify(greetingItem));
+        openAiWs.send(JSON.stringify({ type: 'response.create' }));
+    };
+        
 
         // Handle interruption when the caller's speech starts
         const handleSpeechStartedEvent = () => {
@@ -145,7 +140,7 @@ fastify.register(async (fastify) => {
                         audio_end_ms: elapsedTime
                     };
                     if (SHOW_TIMING_MATH) console.log('Sending truncation event:', JSON.stringify(truncateEvent));
-                    openAiWs.send(JSON.stringify(truncateEvent));
+                    // openAiWs.send(JSON.stringify(truncateEvent));
                 }
 
                 connection.send(JSON.stringify({
