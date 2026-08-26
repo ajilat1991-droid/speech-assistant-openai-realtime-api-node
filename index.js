@@ -315,22 +315,48 @@ fastify.get('/assistant', async (request, reply) => {
 });
 fastify.post('/session', async (request, reply) => {
   try {
+    const form = new FormData();
+
+    form.append(
+      'sdp',
+      new Blob([request.body], { type: 'application/sdp' }),
+      'offer.sdp'
+    );
+
+    form.append(
+      'session',
+      JSON.stringify({
+        type: 'realtime',
+        model: 'gpt-realtime',
+        instructions: SYSTEM_MESSAGE,
+        audio: {
+          output: {
+            voice: VOICE
+          }
+        }
+      })
+    );
+
     const response = await fetch(
       'https://api.openai.com/v1/realtime/calls',
       {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${OPENAI_API_KEY}`,
-          'Content-Type': 'application/sdp'
+          'Authorization': `Bearer ${OPENAI_API_KEY}`
         },
-        body: request.body
+        body: form
       }
     );
 
     const responseText = await response.text();
 
     if (!response.ok) {
-      console.error('OpenAI /realtime/calls error:', response.status, responseText);
+      console.error(
+        'OpenAI WebRTC error:',
+        response.status,
+        responseText
+      );
+
       return reply
         .code(response.status)
         .type('text/plain')
