@@ -78,7 +78,13 @@ async function findContactByName(searchName) {
 const fastify = Fastify();
 fastify.register(fastifyFormBody);
 fastify.register(fastifyWs);
-
+fastify.addContentTypeParser(
+  'application/sdp',
+  { parseAs: 'string' },
+  (request, body, done) => {
+    done(null, body);
+  }
+);
 // Constants
 const SYSTEM_MESSAGE = `
 أنت المساعد التنفيذي الذكي الخاص بيانال.
