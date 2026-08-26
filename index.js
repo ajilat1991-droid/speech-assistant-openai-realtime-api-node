@@ -140,7 +140,24 @@ const SHOW_TIMING_MATH = false;
 fastify.get('/', async (request, reply) => {
     reply.send({ message: 'Twilio Media Stream Server is running!' });
 });
-
+fastify.get('/assistant', async (request, reply) => {
+  return reply
+    .type('text/html')
+    .send(`
+      <!doctype html>
+      <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Yanal AI Assistant</title>
+      </head>
+      <body>
+        <h1>Yanal AI Assistant</h1>
+        <button id="talkButton">🎤 Talk to Assistant</button>
+        <p id="status">Ready</p>
+      </body>
+      </html>
+    `);
+});
 // Route for Twilio to handle incoming calls
 // <Say> punctuation to improve text-to-speech translation
 fastify.all('/incoming-call', async (request, reply) => {
