@@ -4,9 +4,17 @@ import dotenv from 'dotenv';
 import fastifyFormBody from '@fastify/formbody';
 import fastifyWs from '@fastify/websocket';
 import twilio from 'twilio'; 
+import { google } from 'googleapis';
 // Load environment variables from .env file
 dotenv.config();
+const googleOAuth2Client = new google.auth.OAuth2(
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_CLIENT_SECRET,
+  process.env.GOOGLE_REDIRECT_URI
+);
 
+const GOOGLE_CONTACTS_SCOPE =
+  'https://www.googleapis.com/auth/contacts.readonly';
 // Retrieve the OpenAI API key from environment variables.
 const { OPENAI_API_KEY } = process.env;
 
@@ -403,6 +411,44 @@ fastify.all('/outgoing-call', async (request, reply) => {
 </Response>`;
 
   reply.type('text/xml').send(twimlResponse);
+});
+fastify.get('/auth/google', async (request, reply) => {
+  const authUrl = googleOAuth2Client.generateAuthUrl({
+    access_type: 'offline',
+    prompt: 'consent',
+    scope: [GOOGLE_CONTACTS_SCOPE]
+  });
+
+  return reply.redirect(authUrl);
+});
+
+fastify.get('/auth/google/callback', async (request, reply) => {
+  try {
+    const { code } = request.query;
+
+    if (!code) {
+      return reply.code(400).send('Missing authorization code.');
+    }
+
+    const { tokens } = await googleOAuth2Client.getToken(code);
+
+    if (!tokens.refresh_token) {
+      return reply.send(
+        'Google connected, but no refresh token was returned. Please authorize again.'
+      );
+    }
+
+    return reply.type('text/html').send(`
+      <h2>Google Contacts connected successfully</h2>
+      <p>Copy this refresh token and save it in Render as GOOGLE_REFRESH_TOKEN:</p>
+      <textarea style="width:90%;height:120px;">${tokens.refresh_token}</textarea>
+      <p>Keep this token private.</p>
+    `);
+
+  } catch (error) {
+    console.error('Google OAuth error:', error);
+    return reply.code(500).send('Google authorization failed.');
+  }
 });
 fastify.listen({ port: PORT, host: '0.0.0.0' }, (err) => {    
     if (err) {
