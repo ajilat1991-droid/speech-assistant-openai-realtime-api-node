@@ -284,7 +284,86 @@ fastify.get('/assistant', async (request, reply) => {
           talkBtn.style.backgroundColor = '#dc2626';
           talkBtn.disabled = false;
         };
+dc.onmessage = async (event) => {
+  try {
+    const response = JSON.parse(event.data);
 
+    console.log('Realtime event:', response.type, response.name || '');
+
+    // البحث عن شخص في Google Contacts
+    if (
+      response.type === 'response.function_call_arguments.done' &&
+      response.name === 'find_contact'
+    ) {
+      const args = JSON.parse(response.arguments);
+
+      statusEl.textContent = '🔎 جاري البحث عن ' + args.contact_name;
+
+      const r = await fetch('/assistant/find-contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contact_name: args.contact_name
+        })
+      });
+
+      const result = await r.json();
+
+      dc.send(JSON.stringify({
+        type: 'conversation.item.create',
+        item: {
+          type: 'function_call_output',
+          call_id: response.call_id,
+          output: JSON.stringify(result)
+        }
+      }));
+
+      dc.send(JSON.stringify({
+        type: 'response.create'
+      }));
+    }
+
+    // إجراء المكالمة
+    if (
+      response.type === 'response.function_call_arguments.done' &&
+      response.name === 'make_phone_call'
+    ) {
+      const args = JSON.parse(response.arguments);
+
+      statusEl.textContent = '📞 جاري الاتصال...';
+
+      const r = await fetch('/assistant/make-phone-call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone_number: args.phone_number
+        })
+      });
+
+      const result = await r.json();
+
+      dc.send(JSON.stringify({
+        type: 'conversation.item.create',
+        item: {
+          type: 'function_call_output',
+          call_id: response.call_id,
+          output: JSON.stringify(result)
+        }
+      }));
+
+      dc.send(JSON.stringify({
+        type: 'response.create'
+      }));
+
+      statusEl.textContent =
+        result.success ? '✅ تم بدء الاتصال' : '❌ فشل الاتصال';
+    }
+
+  } catch (error) {
+    console.error('Data channel tool error:', error);
+    statusEl.textContent = '❌ خطأ بتنفيذ الأمر';
+  }
+};
         // 6. إنشاء Offer وإرساله للسيرفر
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
@@ -321,19 +400,54 @@ fastify.post('/session', async (request, reply) => {
     form.append('sdp', request.body);
 
     form.append(
-      'session',
-      JSON.stringify({
-        type: 'realtime',
-        model: 'gpt-realtime',
-        instructions: SYSTEM_MESSAGE,
-        audio: {
-          output: {
-            voice: VOICE
-          }
-        }
-      })
-    );
+  'session',
+  JSON.stringify({
+    type: 'realtime',
+    model: 'gpt-realtime',
+    instructions: SYSTEM_MESSAGE,
 
+    tools: [
+      {
+        type: 'function',
+        name: 'find_contact',
+        description: 'Search the user Google Contacts by person name before making a call.',
+        parameters: {
+          type: 'object',
+          properties: {
+            contact_name: {
+              type: 'string',
+              description: 'Name of the person to search for'
+            }
+          },
+          required: ['contact_name']
+        }
+      },
+      {
+        type: 'function',
+        name: 'make_phone_call',
+        description: 'Make a phone call to the supplied phone number.',
+        parameters: {
+          type: 'object',
+          properties: {
+            phone_number: {
+              type: 'string',
+              description: 'Phone number in international E.164 format, for example +96279...'
+            }
+          },
+          required: ['phone_number']
+        }
+      }
+    ],
+
+    tool_choice: 'auto',
+
+    audio: {
+      output: {
+        voice: VOICE
+      }
+    }
+  })
+);
     const response = await fetch(
       'https://api.openai.com/v1/realtime/calls',
       {
@@ -368,6 +482,66 @@ fastify.post('/session', async (request, reply) => {
     console.error('/session error:', error);
 
     return reply.code(500).send({
+      error: error.message
+    });
+  }
+});
+fastify.post('/assistant/find-contact', async (request, reply) => {
+  try {
+    const { contact_name } = request.body;
+
+    console.log('Browser assistant searching for:', contact_name);
+
+    const contacts = await findContactByName(contact_name);
+
+    console.log('Contact search result:', contacts);
+
+    return reply.send({
+      success: true,
+      contacts: contacts
+    });
+
+  } catch (error) {
+    console.error('Browser contact search failed:', error);
+
+    return reply.code(500).send({
+      success: false,
+      error: error.message
+    });
+  }
+});
+fastify.post('/assistant/make-phone-call', async (request, reply) => {
+  try {
+    const { phone_number } = request.body;
+
+    if (!phone_number) {
+      return reply.code(400).send({
+        success: false,
+        error: 'Missing phone number'
+      });
+    }
+
+    console.log('Browser assistant requested call to:', phone_number);
+
+    const call = await twilioClient.calls.create({
+      to: phone_number,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      url: 'https://speech-assistant-openai-realtime-api-syjo.onrender.com/outgoing-call'
+    });
+
+    console.log('Browser outbound call started:', call.sid);
+
+    return reply.send({
+      success: true,
+      phone_number: phone_number,
+      call_sid: call.sid
+    });
+
+  } catch (error) {
+    console.error('Browser outbound call failed:', error);
+
+    return reply.code(500).send({
+      success: false,
       error: error.message
     });
   }
