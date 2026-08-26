@@ -140,6 +140,47 @@ const SHOW_TIMING_MATH = false;
 fastify.get('/', async (request, reply) => {
     reply.send({ message: 'Twilio Media Stream Server is running!' });
 });
+fastify.get('/realtime-token', async (request, reply) => {
+  try {
+    const response = await fetch(
+      'https://api.openai.com/v1/realtime/client_secrets',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          session: {
+            type: 'realtime',
+            model: 'gpt-realtime',
+            instructions: SYSTEM_MESSAGE,
+            audio: {
+              output: {
+                voice: VOICE
+              }
+            }
+          }
+        })
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error('Realtime token error:', data);
+      return reply.code(response.status).send(data);
+    }
+
+    return reply.send(data);
+
+  } catch (error) {
+    console.error('Realtime token creation failed:', error);
+    return reply.code(500).send({
+      error: error.message
+    });
+  }
+});
 fastify.get('/assistant', async (request, reply) => {
   return reply
     .type('text/html')
