@@ -407,23 +407,27 @@ fastify.post('/session', async (request, reply) => {
      {
   type: 'function',
   name: 'call_contact',
-  description: 'Call a person either by Google Contacts name or by a direct phone number, and deliver a message on behalf of Yanal.',
+  description: 'Call a person by Google Contacts name OR call a direct phone number. Use this tool whenever Yanal asks to call, ring, phone, or contact someone.',
+
   parameters: {
     type: 'object',
     properties: {
       contact_name: {
         type: 'string',
-        description: 'Name of the person in Google Contacts, if calling by name'
+        description: 'Contact name when Yanal asks to call someone by name'
       },
+
       phone_number: {
         type: 'string',
-        description: 'Direct phone number in international E.164 format, for example +96279...'
+        description: 'Direct phone number to call, for example +962796123456'
       },
+
       message: {
         type: 'string',
-        description: 'The exact message Yanal wants delivered'
+        description: 'Message to say during the phone call'
       }
     },
+
     required: ['message']
   }
 }
