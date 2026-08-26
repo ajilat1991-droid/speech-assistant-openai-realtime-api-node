@@ -307,6 +307,42 @@ fastify.get('/assistant', async (request, reply) => {
 </body>
 </html>`);
 });
+fastify.post('/session', async (request, reply) => {
+  try {
+    const response = await fetch(
+      'https://api.openai.com/v1/realtime/calls',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+          'Content-Type': 'application/sdp'
+        },
+        body: request.body
+      }
+    );
+
+    const responseText = await response.text();
+
+    if (!response.ok) {
+      console.error('OpenAI /realtime/calls error:', response.status, responseText);
+      return reply
+        .code(response.status)
+        .type('text/plain')
+        .send(responseText);
+    }
+
+    return reply
+      .type('application/sdp')
+      .send(responseText);
+
+  } catch (error) {
+    console.error('/session error:', error);
+
+    return reply.code(500).send({
+      error: error.message
+    });
+  }
+});
 // Route for Twilio to handle incoming calls
 // <Say> punctuation to improve text-to-speech translation
 fastify.all('/incoming-call', async (request, reply) => {
