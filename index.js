@@ -554,7 +554,7 @@ fastify.post('/assistant/make-phone-call', async (request, reply) => {
 
     const call = await twilioClient.calls.create({
       to: phone_number,
-      from: process.env.TWILIO_PHONE_NUMBER,
+      from: '+962796677176',
 url: 'https://speech-assistant-openai-realtime-api-syjo.onrender.com/outgoing-call?message='
   + encodeURIComponent(message || '')   
     });
