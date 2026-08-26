@@ -286,7 +286,52 @@ fastify.register(async (fastify) => {
         });
     });
 });
+const twilioClient = twilio(
+  process.env.TWILIO_ACCOUNT_SID,
+  process.env.TWILIO_AUTH_TOKEN
+);
 
+const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
+
+fastify.post('/make-call', async (request, reply) => {
+  try {
+    const { to } = request.body;
+
+    if (!to) {
+      return reply.code(400).send({ error: 'Missing phone number' });
+    }
+
+    const call = await twilioClient.calls.create({
+      to: to,
+      from: TWILIO_PHONE_NUMBER,
+      url: `https://${request.headers.host}/outgoing-call`
+    });
+
+    return {
+      success: true,
+      callSid: call.sid
+    };
+
+  } catch (error) {
+    console.error('Error making outbound call:', error);
+
+    return reply.code(500).send({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+fastify.all('/outgoing-call', async (request, reply) => {
+  const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Connect>
+    <Stream url="wss://${request.headers.host}/media-stream" />
+  </Connect>
+</Response>`;
+
+  reply.type('text/xml').send(twimlResponse);
+});
 fastify.listen({ port: PORT, host: '0.0.0.0' }, (err) => {    
     if (err) {
         console.error(err);
