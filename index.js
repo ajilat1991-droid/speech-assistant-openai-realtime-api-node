@@ -606,34 +606,42 @@ fastify.register(async (fastify) => {
                 },
                 instructions: SYSTEM_MESSAGE,
                 tools: [
-                  {
-  type: "function",
-  name: "find_contact",
-  description: "Search the user's Google Contacts for a person by name before making a phone call.",
-  parameters: {
-    type: "object",
-    properties: {
-      contact_name: {
-        type: "string",
-        description: "The person's name, for example Ahmad, Mohammad, Rami, يوسف, محمد"
-      }
-    },
-    required: ["contact_name"]
-  }
-},
+  {
+    type: "function",
+    name: "call_contact",
+    description: "Call a person by name from Yanal's Google Contacts and deliver a message.",
+    parameters: {
+      type: "object",
+      properties: {
+        contact_name: {
+          type: "string",
+          description: "Name of the person to call"
+        },
+        message: {
+          type: "string",
+          description: "Message to deliver during the phone call"
+        }
+      },
+      required: ["contact_name", "message"]
+    }
+  },
   {
     type: "function",
     name: "make_phone_call",
-    description: "Make an outbound phone call when the user asks to call a phone number.",
+    description: "Call a phone number directly and deliver a message.",
     parameters: {
       type: "object",
       properties: {
         phone_number: {
           type: "string",
           description: "Phone number in international E.164 format, for example +962791234567"
+        },
+        message: {
+          type: "string",
+          description: "Message to deliver during the phone call"
         }
       },
-      required: ["phone_number"]
+      required: ["phone_number", "message"]
     }
   }
 ],
