@@ -324,13 +324,14 @@ dc.onmessage = async (event) => {
 ) {
   const args = JSON.parse(response.arguments);
 
-  statusEl.textContent = '📞 جاري البحث والاتصال بـ ' + args.contact_name;
-
+statusEl.textContent =
+  '📞 جاري الاتصال بـ ' + (args.contact_name || args.phone_number);
   const r = await fetch('/assistant/call-contact', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contact_name: args.contact_name,
+      phone_number: args.phone_number,
       message: args.message
     })
   });
@@ -406,20 +407,24 @@ fastify.post('/session', async (request, reply) => {
      {
   type: 'function',
   name: 'call_contact',
-  description: 'Find a person in Yanal Google Contacts, call them, and deliver a specific message on behalf of Yanal.',
+  description: 'Call a person either by Google Contacts name or by a direct phone number, and deliver a message on behalf of Yanal.',
   parameters: {
     type: 'object',
     properties: {
       contact_name: {
         type: 'string',
-        description: 'Name of the person Yanal wants to call'
+        description: 'Name of the person in Google Contacts, if calling by name'
+      },
+      phone_number: {
+        type: 'string',
+        description: 'Direct phone number in international E.164 format, for example +96279...'
       },
       message: {
         type: 'string',
-        description: 'The exact message Yanal wants delivered to that person'
+        description: 'The exact message Yanal wants delivered'
       }
     },
-    required: ['contact_name', 'message']
+    required: ['message']
   }
 }
       ],
@@ -473,53 +478,57 @@ fastify.post('/session', async (request, reply) => {
 });
 fastify.post('/assistant/call-contact', async (request, reply) => {
   try {
-    const { contact_name, message } = request.body;
+    const { contact_name, phone_number, message } = request.body;
 
-    if (!contact_name) {
-      return reply.code(400).send({
-        success: false,
-        error: 'Missing contact name'
-      });
-    }
+if (!contact_name && !phone_number) {
+  return reply.code(400).send({
+    success: false,
+    error: 'Missing contact name or phone number'
+  });
+}
 
-    if (!message) {
-      return reply.code(400).send({
-        success: false,
-        error: 'Missing message'
-      });
-    }
+if (!message) {
+  return reply.code(400).send({
+    success: false,
+    error: 'Missing message'
+  });
+}
 
-    console.log('Searching contact:', contact_name);
+let phoneNumber = phone_number;
 
-    const contacts = await findContactByName(contact_name);
+if (!phoneNumber && contact_name) {
+  console.log('Searching contact:', contact_name);
 
-    console.log('Contact search result:', contacts);
+  const contacts = await findContactByName(contact_name);
 
-    if (!contacts || (Array.isArray(contacts) && contacts.length === 0)) {
-      return reply.send({
-        success: false,
-        error: 'Contact not found'
-      });
-    }
+  console.log('Contact search result:', contacts);
 
-    const contact = Array.isArray(contacts) ? contacts[0] : contacts;
+  if (!contacts || (Array.isArray(contacts) && contacts.length === 0)) {
+    return reply.send({
+      success: false,
+      error: 'Contact not found'
+    });
+  }
 
-    const phoneNumber =
-      contact.phone_number ||
-      contact.phoneNumber ||
-      contact.phone ||
-      contact.number ||
-      contact.phoneNumbers?.[0]?.value;
+  const contact = Array.isArray(contacts) ? contacts[0] : contacts;
 
-    if (!phoneNumber) {
-      return reply.send({
-        success: false,
-        error: 'Contact found but has no phone number'
-      });
-    }
+  phoneNumber =
+    contact.phone_number ||
+    contact.phoneNumber ||
+    contact.phone ||
+    contact.number ||
+    contact.phoneNumbers?.[0]?.value;
 
-    console.log('Calling:', contact_name, phoneNumber);
-    console.log('Message to deliver:', message);
+  if (!phoneNumber) {
+    return reply.send({
+      success: false,
+      error: 'Contact found but has no phone number'
+    });
+  }
+}
+
+console.log('Calling:', contact_name || phoneNumber, phoneNumber);
+console.log('Message to deliver:', message);
 
     const call = await twilioClient.calls.create({
       to: phoneNumber,
