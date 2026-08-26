@@ -659,26 +659,7 @@ if (
     }));
   }
 }
-  } catch (error) {
-    console.error('AI phone call failed:', error);
-
-    openAiWs.send(JSON.stringify({
-      type: 'conversation.item.create',
-      item: {
-        type: 'function_call_output',
-        call_id: response.call_id,
-        output: JSON.stringify({
-          success: false,
-          error: error.message
-        })
-      }
-    }));
-
-    openAiWs.send(JSON.stringify({
-      type: 'response.create'
-    }));
-  }
-}
+  
                 if (response.type === 'input_audio_buffer.speech_started') {
                     handleSpeechStartedEvent();
                 }
