@@ -22,7 +22,58 @@ if (!OPENAI_API_KEY) {
     console.error('Missing OpenAI API key. Please set it in the .env file.');
     process.exit(1);
 }
+async function findContactByName(searchName) {
+  const auth = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.GOOGLE_REDIRECT_URI
+  );
 
+  auth.setCredentials({
+    refresh_token: process.env.GOOGLE_REFRESH_TOKEN
+  });
+
+  const people = google.people({
+    version: 'v1',
+    auth
+  });
+
+  let pageToken;
+  const matches = [];
+
+  do {
+    const result = await people.people.connections.list({
+      resourceName: 'people/me',
+      pageSize: 1000,
+      pageToken,
+      personFields: 'names,phoneNumbers'
+    });
+
+    const contacts = result.data.connections || [];
+
+    for (const contact of contacts) {
+      const names = contact.names || [];
+      const phones = contact.phoneNumbers || [];
+
+      const displayName = names[0]?.displayName;
+
+      if (
+        displayName &&
+        displayName.toLowerCase().includes(searchName.toLowerCase()) &&
+        phones.length > 0
+      ) {
+        matches.push({
+          name: displayName,
+          phone_number: phones[0].value
+        });
+      }
+    }
+
+    pageToken = result.data.nextPageToken;
+  } while (pageToken);
+
+  return matches;
+}
 // Initialize Fastify
 const fastify = Fastify();
 fastify.register(fastifyFormBody);
@@ -58,6 +109,12 @@ const SYSTEM_MESSAGE = `
 - سبب الاتصال
 - مستوى الأولوية
 - أي موعد أو طلب متابعة
+عند طلب المستخدم الاتصال بشخص بالاسم وليس برقم هاتف:
+1. استخدم أداة find_contact للبحث عن الاسم داخل Google Contacts.
+2. إذا وجدت نتيجة واحدة فقط، استخدم رقمها مع أداة make_phone_call.
+3. إذا وجدت أكثر من نتيجة بنفس الاسم، اسأل المستخدم أي شخص يقصد قبل إجراء المكالمة.
+4. إذا لم تجد الاسم، أخبر المستخدم أنك لم تجد جهة الاتصال.
+5. لا تخمّن أرقام الهواتف ولا تختار شخصاً من تلقاء نفسك.
 `;
 const VOICE = 'alloy';
 const TEMPERATURE = 0.8; // Controls the randomness of the AI's responses
@@ -129,6 +186,21 @@ fastify.register(async (fastify) => {
                 },
                 instructions: SYSTEM_MESSAGE,
                 tools: [
+                  {
+  type: "function",
+  name: "find_contact",
+  description: "Search the user's Google Contacts for a person by name before making a phone call.",
+  parameters: {
+    type: "object",
+    properties: {
+      contact_name: {
+        type: "string",
+        description: "The person's name, for example Ahmad, Mohammad, Rami, يوسف, محمد"
+      }
+    },
+    required: ["contact_name"]
+  }
+},
   {
     type: "function",
     name: "make_phone_call",
@@ -248,6 +320,55 @@ tool_choice: "auto",
                     
                     sendMark(connection, streamSid);
                 }
+              if (
+  response.type === 'response.function_call_arguments.done' &&
+  response.name === 'find_contact'
+) {
+  try {
+    const args = JSON.parse(response.arguments);
+    const contactName = args.contact_name;
+
+    console.log(`Searching Google Contacts for: ${contactName}`);
+
+    const contacts = await findContactByName(contactName);
+
+    openAiWs.send(JSON.stringify({
+      type: 'conversation.item.create',
+      item: {
+        type: 'function_call_output',
+        call_id: response.call_id,
+        output: JSON.stringify({
+          success: true,
+          search_name: contactName,
+          contacts
+        })
+      }
+    }));
+
+    openAiWs.send(JSON.stringify({
+      type: 'response.create'
+    }));
+
+  } catch (error) {
+    console.error('Google Contacts search failed:', error);
+
+    openAiWs.send(JSON.stringify({
+      type: 'conversation.item.create',
+      item: {
+        type: 'function_call_output',
+        call_id: response.call_id,
+        output: JSON.stringify({
+          success: false,
+          error: error.message
+        })
+      }
+    }));
+
+    openAiWs.send(JSON.stringify({
+      type: 'response.create'
+    }));
+  }
+}
 if (
   response.type === 'response.function_call_arguments.done' &&
   response.name === 'make_phone_call'
