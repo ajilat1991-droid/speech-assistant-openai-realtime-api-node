@@ -145,6 +145,10 @@ If this is an outbound phone call:
 لا تنتظر منه أوامر كمساعد شخصي له.
 بعد إيصال الرسالة اسأله فقط إذا كان يريد ترك رد قصير لينال.
 ثم أنهِ المكالمة بأدب.
+When Yanal asks you to call a person, use call_contact exactly once.
+Pass the person's name and the exact message Yanal wants delivered.
+Do not call find_contact or make_phone_call separately.
+Wait for call_contact to finish before replying to Yanal.
 `;
 const VOICE = 'alloy';
 const TEMPERATURE = 0.8; // Controls the randomness of the AI's responses
@@ -314,75 +318,42 @@ dc.onmessage = async (event) => {
 
     console.log('Realtime event:', response.type, response.name || '');
 
-    // البحث عن شخص في Google Contacts
     if (
-      response.type === 'response.function_call_arguments.done' &&
-      response.name === 'find_contact'
-    ) {
-      const args = JSON.parse(response.arguments);
+  response.type === 'response.function_call_arguments.done' &&
+  response.name === 'call_contact'
+) {
+  const args = JSON.parse(response.arguments);
 
-      statusEl.textContent = '🔎 جاري البحث عن ' + args.contact_name;
+  statusEl.textContent = '📞 جاري البحث والاتصال بـ ' + args.contact_name;
 
-      const r = await fetch('/assistant/find-contact', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contact_name: args.contact_name
-        })
-      });
+  const r = await fetch('/assistant/call-contact', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contact_name: args.contact_name,
+      message: args.message
+    })
+  });
 
-      const result = await r.json();
+  const result = await r.json();
 
-      dc.send(JSON.stringify({
-        type: 'conversation.item.create',
-        item: {
-          type: 'function_call_output',
-          call_id: response.call_id,
-          output: JSON.stringify(result)
-        }
-      }));
-
-      dc.send(JSON.stringify({
-        type: 'response.create'
-      }));
+  dc.send(JSON.stringify({
+    type: 'conversation.item.create',
+    item: {
+      type: 'function_call_output',
+      call_id: response.call_id,
+      output: JSON.stringify(result)
     }
+  }));
 
-    // إجراء المكالمة
-    if (
-      response.type === 'response.function_call_arguments.done' &&
-      response.name === 'make_phone_call'
-    ) {
-      const args = JSON.parse(response.arguments);
+  dc.send(JSON.stringify({
+    type: 'response.create'
+  }));
 
-      statusEl.textContent = '📞 جاري الاتصال...';
-
-      const r = await fetch('/assistant/make-phone-call', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone_number: args.phone_number,
-          message: args.message
-        })
-      });
-
-      const result = await r.json();
-
-      dc.send(JSON.stringify({
-        type: 'conversation.item.create',
-        item: {
-          type: 'function_call_output',
-          call_id: response.call_id,
-          output: JSON.stringify(result)
-        }
-      }));
-
-      dc.send(JSON.stringify({
-        type: 'response.create'
-      }));
-
-      statusEl.textContent =
-        result.success ? '✅ تم بدء الاتصال' : '❌ فشل الاتصال';
-    }
+  statusEl.textContent = result.success
+    ? '✅ تم بدء الاتصال'
+    : '❌ تعذر إجراء الاتصال';
+}
 
   } catch (error) {
     console.error('Data channel tool error:', error);
@@ -432,41 +403,25 @@ fastify.post('/session', async (request, reply) => {
     instructions: SYSTEM_MESSAGE,
 
     tools: [
-      {
-        type: 'function',
-        name: 'find_contact',
-        description: 'Search the user Google Contacts by person name before making a call.',
-        parameters: {
-          type: 'object',
-          properties: {
-            contact_name: {
-              type: 'string',
-              description: 'Name of the person to search for'
-            }
-          },
-          required: ['contact_name']
-        }
-      },
      {
   type: 'function',
-  name: 'make_phone_call',
-  description: 'Call a person on behalf of Yanal and deliver a specific message.',
+  name: 'call_contact',
+  description: 'Find a person in Yanal Google Contacts, call them, and deliver a specific message on behalf of Yanal.',
   parameters: {
     type: 'object',
     properties: {
-      phone_number: {
+      contact_name: {
         type: 'string',
-        description: 'Phone number in international E.164 format, for example +96279...'
+        description: 'Name of the person Yanal wants to call'
       },
       message: {
         type: 'string',
-        description: 'The exact message Yanal wants the assistant to deliver to the person.'
+        description: 'The exact message Yanal wants delivered to that person'
       }
     },
-    required: ['phone_number', 'message']
+    required: ['contact_name', 'message']
   }
 }
-    ],
 
     tool_choice: 'auto',
 
@@ -515,60 +470,76 @@ fastify.post('/session', async (request, reply) => {
     });
   }
 });
-fastify.post('/assistant/find-contact', async (request, reply) => {
+fastify.post('/assistant/call-contact', async (request, reply) => {
   try {
-    const { contact_name } = request.body;
+    const { contact_name, message } = request.body;
 
-    console.log('Browser assistant searching for:', contact_name);
+    if (!contact_name) {
+      return reply.code(400).send({
+        success: false,
+        error: 'Missing contact name'
+      });
+    }
+
+    if (!message) {
+      return reply.code(400).send({
+        success: false,
+        error: 'Missing message'
+      });
+    }
+
+    console.log('Searching contact:', contact_name);
 
     const contacts = await findContactByName(contact_name);
 
     console.log('Contact search result:', contacts);
 
-    return reply.send({
-      success: true,
-      contacts: contacts
-    });
-
-  } catch (error) {
-    console.error('Browser contact search failed:', error);
-
-    return reply.code(500).send({
-      success: false,
-      error: error.message
-    });
-  }
-});
-fastify.post('/assistant/make-phone-call', async (request, reply) => {
-  try {
-    const { phone_number, message } = request.body;
-
-    if (!phone_number) {
-      return reply.code(400).send({
+    if (!contacts || (Array.isArray(contacts) && contacts.length === 0)) {
+      return reply.send({
         success: false,
-        error: 'Missing phone number'
+        error: 'Contact not found'
       });
     }
 
-    console.log('Browser assistant requested call to:', phone_number);
+    const contact = Array.isArray(contacts) ? contacts[0] : contacts;
+
+    const phoneNumber =
+      contact.phone_number ||
+      contact.phoneNumber ||
+      contact.phone ||
+      contact.number ||
+      contact.phoneNumbers?.[0]?.value;
+
+    if (!phoneNumber) {
+      return reply.send({
+        success: false,
+        error: 'Contact found but has no phone number'
+      });
+    }
+
+    console.log('Calling:', contact_name, phoneNumber);
+    console.log('Message to deliver:', message);
 
     const call = await twilioClient.calls.create({
-      to: phone_number,
+      to: phoneNumber,
       from: '+962796677176',
-url: 'https://speech-assistant-openai-realtime-api-syjo.onrender.com/outgoing-call?message='
-  + encodeURIComponent(message || '')   
+      url:
+        'https://speech-assistant-openai-realtime-api-syjo.onrender.com/outgoing-call?message=' +
+        encodeURIComponent(message)
     });
 
-    console.log('Browser outbound call started:', call.sid);
+    console.log('Call started:', call.sid);
 
     return reply.send({
       success: true,
-      phone_number: phone_number,
+      contact_name: contact_name,
+      phone_number: phoneNumber,
+      message: message,
       call_sid: call.sid
     });
 
   } catch (error) {
-    console.error('Browser outbound call failed:', error);
+    console.error('CALL CONTACT ERROR:', error);
 
     return reply.code(500).send({
       success: false,
