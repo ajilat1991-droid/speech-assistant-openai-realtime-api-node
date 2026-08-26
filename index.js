@@ -188,21 +188,28 @@ fastify.get('/assistant', async (request, reply) => {
 <!doctype html>
 <html>
 <head>
+  <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Yanal AI Assistant</title>
 
   <style>
     body {
-      font-family: Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       text-align: center;
       padding: 50px 20px;
+      background-color: #0f172a;
+      color: #f8fafc;
     }
 
     button {
-      font-size: 20px;
-      padding: 15px 25px;
-      border-radius: 12px;
+      font-size: 18px;
+      padding: 14px 28px;
+      border-radius: 50px;
+      border: none;
+      background-color: #2563eb;
+      color: white;
       cursor: pointer;
+      font-weight: bold;
     }
 
     #status {
@@ -325,9 +332,8 @@ pc.ontrack = (event) => {
 
     connected = true;
 
-    button.textContent = '⏹ Stop Assistant';
-    status.textContent = '🟢 Connected — speak now';
-
+   btn.textContent = "إيقاف المحادثة";
+   status.textContent = "متصل — تفضل بالتحدث";
   } catch (error) {
 
     console.error(error);
