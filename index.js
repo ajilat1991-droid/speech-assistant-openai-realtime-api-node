@@ -185,18 +185,186 @@ fastify.get('/assistant', async (request, reply) => {
   return reply
     .type('text/html')
     .send(`
-      <!doctype html>
-      <html>
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Yanal AI Assistant</title>
-      </head>
-      <body>
-        <h1>Yanal AI Assistant</h1>
-        <button id="talkButton">🎤 Talk to Assistant</button>
-        <p id="status">Ready</p>
-      </body>
-      </html>
+<!doctype html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Yanal AI Assistant</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 50px 20px;
+    }
+
+    button {
+      font-size: 20px;
+      padding: 15px 25px;
+      border-radius: 12px;
+      cursor: pointer;
+    }
+
+    #status {
+      margin-top: 20px;
+      font-size: 18px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>Yanal AI Assistant</h1>
+
+  <button id="talkButton">
+    🎤 Talk to Assistant
+  </button>
+
+  <p id="status">Ready</p>
+
+<script>
+
+let pc = null;
+let localStream = null;
+let connected = false;
+
+const button = document.getElementById('talkButton');
+const status = document.getElementById('status');
+
+button.addEventListener('click', async () => {
+
+  if (connected) {
+    stopAssistant();
+    return;
+  }
+
+  try {
+
+    status.textContent = 'Connecting...';
+
+    // 1. Get temporary OpenAI token from our Render server
+    const tokenResponse = await fetch('/realtime-token');
+
+    if (!tokenResponse.ok) {
+      throw new Error('Could not get realtime token');
+    }
+
+    const tokenData = await tokenResponse.json();
+
+    const EPHEMERAL_KEY = tokenData.value;
+
+    if (!EPHEMERAL_KEY) {
+      console.error(tokenData);
+      throw new Error('Realtime token missing');
+    }
+
+    // 2. Create WebRTC connection
+    pc = new RTCPeerConnection();
+
+    // 3. Play assistant audio
+    const audio = document.createElement('audio');
+    audio.autoplay = true;
+
+    pc.ontrack = (event) => {
+      audio.srcObject = event.streams[0];
+    };
+
+    // 4. Ask for microphone access
+    localStream = await navigator.mediaDevices.getUserMedia({
+      audio: true
+    });
+
+    localStream.getTracks().forEach(track => {
+      pc.addTrack(track, localStream);
+    });
+
+    // 5. Open realtime events channel
+    const dc = pc.createDataChannel('oai-events');
+
+    dc.addEventListener('open', () => {
+      console.log('OpenAI data channel connected');
+      status.textContent = '🟢 Listening...';
+    });
+
+    dc.addEventListener('message', (event) => {
+      const data = JSON.parse(event.data);
+      console.log('OpenAI event:', data);
+    });
+
+    // 6. Create WebRTC offer
+    const offer = await pc.createOffer();
+
+    await pc.setLocalDescription(offer);
+
+    // 7. Send SDP to OpenAI using temporary token
+    const sdpResponse = await fetch(
+      'https://api.openai.com/v1/realtime/calls',
+      {
+        method: 'POST',
+        body: offer.sdp,
+        headers: {
+          'Authorization': 'Bearer ' + EPHEMERAL_KEY,
+          'Content-Type': 'application/sdp'
+        }
+      }
+    );
+
+    if (!sdpResponse.ok) {
+      const errorText = await sdpResponse.text();
+      console.error(errorText);
+      throw new Error('OpenAI WebRTC connection failed');
+    }
+
+    const answer = {
+      type: 'answer',
+      sdp: await sdpResponse.text()
+    };
+
+    await pc.setRemoteDescription(answer);
+
+    connected = true;
+
+    button.textContent = '⏹ Stop Assistant';
+    status.textContent = '🟢 Connected — speak now';
+
+  } catch (error) {
+
+    console.error(error);
+
+    status.textContent =
+      '❌ ' + error.message;
+
+    stopAssistant();
+  }
+
+});
+
+
+function stopAssistant() {
+
+  if (localStream) {
+    localStream.getTracks().forEach(track => track.stop());
+    localStream = null;
+  }
+
+  if (pc) {
+    pc.close();
+    pc = null;
+  }
+
+  connected = false;
+
+  button.textContent =
+    '🎤 Talk to Assistant';
+
+  status.textContent =
+    'Ready';
+}
+
+</script>
+
+</body>
+</html>
     `);
 });
 // Route for Twilio to handle incoming calls
