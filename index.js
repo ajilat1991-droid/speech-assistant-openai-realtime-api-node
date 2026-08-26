@@ -317,11 +317,8 @@ fastify.post('/session', async (request, reply) => {
   try {
     const form = new FormData();
 
-    form.append(
-      'sdp',
-      new Blob([request.body], { type: 'application/sdp' }),
-      'offer.sdp'
-    );
+    // IMPORTANT: SDP must be a normal multipart field
+    form.append('sdp', request.body);
 
     form.append(
       'session',
@@ -342,7 +339,7 @@ fastify.post('/session', async (request, reply) => {
       {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${OPENAI_API_KEY}`
+          Authorization: `Bearer ${OPENAI_API_KEY}`
         },
         body: form
       }
