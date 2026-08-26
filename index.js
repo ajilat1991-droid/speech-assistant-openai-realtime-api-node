@@ -608,7 +608,11 @@ if (
     const args = JSON.parse(response.arguments);
     const phoneNumber = args.phone_number;
 
-    console.log(`AI requested phone call to: ${phoneNumber}`);
+    console.log('AI requested phone call to:', phoneNumber);
+
+    if (!phoneNumber) {
+      throw new Error('No phone number received from AI');
+    }
 
     const call = await twilioClient.calls.create({
       to: phoneNumber,
@@ -616,7 +620,7 @@ if (
       url: 'https://speech-assistant-openai-realtime-api-syjo.onrender.com/outgoing-call'
     });
 
-    console.log(`Outbound call started: ${call.sid}`);
+    console.log('Outbound call started:', call.sid);
 
     openAiWs.send(JSON.stringify({
       type: 'conversation.item.create',
@@ -625,8 +629,8 @@ if (
         call_id: response.call_id,
         output: JSON.stringify({
           success: true,
-          phone_number: phoneNumber,
-          call_sid: call.sid
+          call_sid: call.sid,
+          phone_number: phoneNumber
         })
       }
     }));
@@ -635,6 +639,26 @@ if (
       type: 'response.create'
     }));
 
+  } catch (error) {
+    console.error('MAKE PHONE CALL ERROR:', error);
+
+    openAiWs.send(JSON.stringify({
+      type: 'conversation.item.create',
+      item: {
+        type: 'function_call_output',
+        call_id: response.call_id,
+        output: JSON.stringify({
+          success: false,
+          error: error.message
+        })
+      }
+    }));
+
+    openAiWs.send(JSON.stringify({
+      type: 'response.create'
+    }));
+  }
+}
   } catch (error) {
     console.error('AI phone call failed:', error);
 
