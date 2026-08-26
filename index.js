@@ -319,24 +319,68 @@ dc.onmessage = async (event) => {
     console.log('Realtime event:', response.type, response.name || '');
 
     if (
-  response.type === 'response.function_call_arguments.done' &&
-  response.name === 'call_contact'
+  response.type === 'response.function_call_arguments.done'
 ) {
-  const args = JSON.parse(response.arguments);
+  const args = JSON.parse(response.arguments || '{}');
 
-statusEl.textContent =
-  '📞 جاري الاتصال بـ ' + (args.contact_name || args.phone_number);
-  const r = await fetch('/assistant/call-contact', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contact_name: args.contact_name,
+  console.log('TOOL CALLED:', response.name, args);
+
+  let endpoint;
+  let body;
+
+  // اتصال مباشر برقم
+  if (response.name === 'make_phone_call') {
+    endpoint = '/assistant/make-phone-call';
+
+    body = {
       phone_number: args.phone_number,
-      message: args.message
-    })
+      message: args.message || ''
+    };
+
+    statusEl.textContent =
+      '📞 جاري الاتصال بالرقم ' + args.phone_number;
+  }
+
+  // البحث عن شخص في Contacts
+  else if (response.name === 'find_contact') {
+    endpoint = '/assistant/find-contact';
+
+    body = {
+      contact_name: args.contact_name
+    };
+
+    statusEl.textContent =
+      '🔎 جاري البحث عن ' + args.contact_name;
+  }
+
+  // اتصال باسم شخص
+  else if (response.name === 'call_contact') {
+    endpoint = '/assistant/call-contact';
+
+    body = {
+      contact_name: args.contact_name,
+      message: args.message || ''
+    };
+
+    statusEl.textContent =
+      '📞 جاري الاتصال بـ ' + args.contact_name;
+  }
+
+  else {
+    return;
+  }
+
+  const r = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
   });
 
   const result = await r.json();
+
+  console.log('TOOL RESULT:', response.name, result);
 
   dc.send(JSON.stringify({
     type: 'conversation.item.create',
@@ -352,8 +396,8 @@ statusEl.textContent =
   }));
 
   statusEl.textContent = result.success
-    ? '✅ تم بدء الاتصال'
-    : '❌ تعذر إجراء الاتصال';
+    ? '✅ تم تنفيذ الطلب'
+    : '❌ تعذر تنفيذ الطلب: ' + (result.error || '');
 }
 
   } catch (error) {
@@ -605,46 +649,45 @@ fastify.register(async (fastify) => {
                     output: { format: { type: 'audio/pcmu' }, voice: VOICE },
                 },
                 instructions: SYSTEM_MESSAGE,
-                tools: [
-  {
-    type: "function",
-    name: "call_contact",
-    description: "Call a person by name from Yanal's Google Contacts and deliver a message.",
-    parameters: {
-      type: "object",
-      properties: {
-        contact_name: {
-          type: "string",
-          description: "Name of the person to call"
-        },
-        message: {
-          type: "string",
-          description: "Message to deliver during the phone call"
-        }
+                {
+  type: "function",
+  name: "call_contact",
+  description: "Call a person from Yanal's Google Contacts. Use this whenever the user asks to call, phone, ring, or contact a person by name.",
+  parameters: {
+    type: "object",
+    properties: {
+      contact_name: {
+        type: "string",
+        description: "Name of the person to call"
       },
-      required: ["contact_name", "message"]
-    }
-  },
-  {
-    type: "function",
-    name: "make_phone_call",
-    description: "Call a phone number directly and deliver a message.",
-    parameters: {
-      type: "object",
-      properties: {
-        phone_number: {
-          type: "string",
-          description: "Phone number in international E.164 format, for example +962791234567"
-        },
-        message: {
-          type: "string",
-          description: "Message to deliver during the phone call"
-        }
-      },
-      required: ["phone_number", "message"]
-    }
+      message: {
+        type: "string",
+        description: "Optional message to deliver during the phone call"
+      }
+    },
+    required: ["contact_name"]
   }
-],
+},
+{
+  type: "function",
+  name: "make_phone_call",
+  description: "Call a phone number directly. Use this whenever the user asks to call, phone, or ring a specific phone number.",
+  parameters: {
+    type: "object",
+    properties: {
+      phone_number: {
+        type: "string",
+        description: "Phone number to call, preferably in international E.164 format such as +962791234567"
+      },
+      message: {
+        type: "string",
+        description: "Optional message to deliver during the phone call"
+      }
+    },
+    required: ["phone_number"]
+  }
+}
+          ],
 tool_choice: "auto",
             },
         };
