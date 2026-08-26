@@ -422,6 +422,7 @@ fastify.post('/session', async (request, reply) => {
     required: ['contact_name', 'message']
   }
 }
+      ],
 
     tool_choice: 'auto',
 
