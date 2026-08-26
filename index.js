@@ -121,6 +121,13 @@ const SYSTEM_MESSAGE = `
 3. إذا وجدت أكثر من نتيجة بنفس الاسم، اسأل المستخدم أي شخص يقصد قبل إجراء المكالمة.
 4. إذا لم تجد الاسم، أخبر المستخدم أنك لم تجد جهة الاتصال.
 5. لا تخمّن أرقام الهواتف ولا تختار شخصاً من تلقاء نفسك.
+When the user asks to call a person by name:
+1. ALWAYS use find_contact first.
+2. Use the phone number returned by find_contact.
+3. Then ALWAYS call make_phone_call with that phone number.
+4. Never say that a call was made unless make_phone_call returns success.
+5. Do not ask the user for the phone number if the contact can be found in Google Contacts.
+إذا طلب المستخدم الاتصال بشخص بالاسم، استخدم find_contact أولاً دائماً، ثم استخدم الرقم الناتج مع make_phone_call. لا تقل إن الاتصال تم إلا بعد نجاح الأداة.
 `;
 const VOICE = 'alloy';
 const TEMPERATURE = 0.8; // Controls the randomness of the AI's responses
