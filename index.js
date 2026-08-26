@@ -184,195 +184,128 @@ fastify.get('/realtime-token', async (request, reply) => {
 fastify.get('/assistant', async (request, reply) => {
   return reply
     .type('text/html')
-    .send(`
-<!doctype html>
-<html>
+    .send(`<!doctype html>
+<html lang="ar" dir="rtl">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Yanal AI Assistant</title>
-
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       text-align: center;
-      padding: 50px 20px;
+      padding: 60px 20px;
       background-color: #0f172a;
       color: #f8fafc;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 80vh;
     }
-
     button {
-      font-size: 18px;
-      padding: 14px 28px;
+      font-size: 20px;
+      padding: 16px 36px;
       border-radius: 50px;
       border: none;
       background-color: #2563eb;
       color: white;
       cursor: pointer;
       font-weight: bold;
+      box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
+      transition: all 0.2s ease;
     }
-
+    button:active { transform: scale(0.96); }
     #status {
-      margin-top: 20px;
+      margin-top: 25px;
       font-size: 18px;
+      color: #94a3b8;
     }
   </style>
 </head>
-
 <body>
+  <h2>Yanal AI Assistant</h2>
+  <button id="talkBtn">تحدث مع المساعد</button>
+  <div id="status">جاهز للاستخدام</div>
 
-  <h1>Yanal AI Assistant</h1>
+  <script>
+    let pc = null;
+    let localStream = null;
+    const talkBtn = document.getElementById('talkBtn');
+    const statusEl = document.getElementById('status');
 
-  <button id="talkButton">
-    🎤 Talk to Assistant
-  </button>
+    // عنصر الصوت
+    const audioEl = document.createElement('audio');
+    audioEl.autoplay = true;
+    audioEl.playsInline = true;
+    document.body.appendChild(audioEl);
 
-  <p id="status">Ready</p>
-
-<script>
-
-let pc = null;
-let localStream = null;
-let connected = false;
-
-const button = document.getElementById('talkButton');
-const status = document.getElementById('status');
-
-button.addEventListener('click', async () => {
-
-  if (connected) {
-    stopAssistant();
-    return;
-  }
-
-  try {
-
-    status.textContent = 'Connecting...';
-
-    // 1. Get temporary OpenAI token from our Render server
-    const tokenResponse = await fetch('/realtime-token');
-
-    if (!tokenResponse.ok) {
-      throw new Error('Could not get realtime token');
-    }
-
-    const tokenData = await tokenResponse.json();
-
-    const EPHEMERAL_KEY = tokenData.value;
-
-    if (!EPHEMERAL_KEY) {
-      console.error(tokenData);
-      throw new Error('Realtime token missing');
-    }
-
-    // 2. Create WebRTC connection
-    pc = new RTCPeerConnection();
-
-    // 3. Play assistant audio
-const audio = document.createElement('audio');
-audio.autoplay = true;
-document.body.appendChild(audio);
-
-pc.ontrack = (event) => {
-  audio.srcObject = event.streams[0];
-  audio.play().catch(e => console.error("Audio playback error:", e));
-};
-    // 4. Ask for microphone access
-    localStream = await navigator.mediaDevices.getUserMedia({
-      audio: true
-    });
-
-    localStream.getTracks().forEach(track => {
-      pc.addTrack(track, localStream);
-    });
-
-    // 5. Open realtime events channel
-    const dc = pc.createDataChannel('oai-events');
-
-    dc.addEventListener('open', () => {
-      console.log('OpenAI data channel connected');
-      status.textContent = '🟢 Listening...';
-    });
-
-    dc.addEventListener('message', (event) => {
-      const data = JSON.parse(event.data);
-      console.log('OpenAI event:', data);
-    });
-
-    // 6. Create WebRTC offer
-    const offer = await pc.createOffer();
-
-    await pc.setLocalDescription(offer);
-
-    // 7. Send SDP to OpenAI using temporary token
-    const sdpResponse = await fetch(
-      'https://api.openai.com/v1/realtime/calls',
-      {
-        method: 'POST',
-        body: offer.sdp,
-        headers: {
-          'Authorization': 'Bearer ' + EPHEMERAL_KEY,
-          'Content-Type': 'application/sdp'
-        }
+    talkBtn.onclick = async () => {
+      if (pc) {
+        if (localStream) localStream.getTracks().forEach(t => t.stop());
+        pc.close();
+        pc = null;
+        statusEl.textContent = 'جاهز للاستخدام';
+        talkBtn.textContent = 'تحدث مع المساعد';
+        talkBtn.style.backgroundColor = '#2563eb';
+        return;
       }
-    );
 
-    if (!sdpResponse.ok) {
-      const errorText = await sdpResponse.text();
-      console.error(errorText);
-      throw new Error('OpenAI WebRTC connection failed');
-    }
+      try {
+        statusEl.textContent = 'جاري الاتصال...';
+        talkBtn.disabled = true;
 
-    const answer = {
-      type: 'answer',
-      sdp: await sdpResponse.text()
+        // 1. طلب الميكروفون
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+        // 2. إنشاء اتصال WebRTC
+        pc = new RTCPeerConnection();
+
+        // 3. ربط مسار الصوت القادم
+        pc.ontrack = (event) => {
+          audioEl.srcObject = event.streams[0];
+          audioEl.play().catch(e => console.error('Audio play error:', e));
+        };
+
+        // 4. إضافة مسار الميكروفون
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+        // 5. Data Channel
+        const dc = pc.createDataChannel('oai-events');
+        dc.onopen = () => {
+          statusEl.textContent = '🟢 متصل — تفضل بالتحدث الآن';
+          talkBtn.textContent = 'إنهاء المكالمة';
+          talkBtn.style.backgroundColor = '#dc2626';
+          talkBtn.disabled = false;
+        };
+
+        // 6. إنشاء Offer وإرساله للسيرفر
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        const sdpResponse = await fetch('/session', {
+          method: 'POST',
+          body: offer.sdp,
+          headers: { 'Content-Type': 'application/sdp' }
+        });
+
+        if (!sdpResponse.ok) {
+          throw new Error('Server returned status: ' + sdpResponse.status);
+        }
+
+        const answerSdp = await sdpResponse.text();
+        await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+
+      } catch (err) {
+        console.error('Error:', err);
+        statusEl.textContent = 'فشل الاتصال: ' + err.message;
+        talkBtn.disabled = false;
+        if (pc) { pc.close(); pc = null; }
+      }
     };
-
-    await pc.setRemoteDescription(answer);
-
-    connected = true;
-
-   btn.textContent = "إيقاف المحادثة";
-   status.textContent = "متصل — تفضل بالتحدث";
-  } catch (error) {
-
-    console.error(error);
-
-    status.textContent =
-      '❌ ' + error.message;
-
-    stopAssistant();
-  }
-
-});
-
-
-function stopAssistant() {
-
-  if (localStream) {
-    localStream.getTracks().forEach(track => track.stop());
-    localStream = null;
-  }
-
-  if (pc) {
-    pc.close();
-    pc = null;
-  }
-
-  connected = false;
-
-  button.textContent =
-    '🎤 Talk to Assistant';
-
-  status.textContent =
-    'Ready';
-}
-
-</script>
-
+  </script>
 </body>
-</html>
-    `);
+</html>`);
 });
 // Route for Twilio to handle incoming calls
 // <Say> punctuation to improve text-to-speech translation
