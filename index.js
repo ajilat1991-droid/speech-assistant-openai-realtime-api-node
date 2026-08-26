@@ -940,6 +940,7 @@ if (
 
     break;
 }
+                }
             } catch (error) {
                 console.error('Error parsing message:', error, 'Message:', message);
             }
