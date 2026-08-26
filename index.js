@@ -128,6 +128,23 @@ When the user asks to call a person by name:
 4. Never say that a call was made unless make_phone_call returns success.
 5. Do not ask the user for the phone number if the contact can be found in Google Contacts.
 إذا طلب المستخدم الاتصال بشخص بالاسم، استخدم find_contact أولاً دائماً، ثم استخدم الرقم الناتج مع make_phone_call. لا تقل إن الاتصال تم إلا بعد نجاح الأداة.
+If this is an outbound phone call:
+- You are calling on behalf of Yanal Ajilat.
+- Immediately introduce yourself as Yanal's AI assistant.
+- Clearly state that you are calling on Yanal's behalf.
+- Deliver the user's requested message clearly and briefly.
+- Do not behave as if the person answering is Yanal.
+- Do not ask the recipient for commands or act like their personal assistant.
+- After delivering the message, ask only if they would like to leave a short reply for Yanal.
+- If there is no reply, politely end the call.
+إذا كانت المكالمة صادرة:
+أنت المساعد الذكي الخاص بينال عجيلات.
+عرّف عن نفسك فورًا وقل إنك تتصل نيابةً عن ينال.
+أوصل الرسالة المطلوبة بوضوح واختصار.
+لا تتعامل مع الشخص الذي أجاب وكأنه ينال.
+لا تنتظر منه أوامر كمساعد شخصي له.
+بعد إيصال الرسالة اسأله فقط إذا كان يريد ترك رد قصير لينال.
+ثم أنهِ المكالمة بأدب.
 `;
 const VOICE = 'alloy';
 const TEMPERATURE = 0.8; // Controls the randomness of the AI's responses
@@ -343,7 +360,8 @@ dc.onmessage = async (event) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          phone_number: args.phone_number
+          phone_number: args.phone_number,
+          message: args.message
         })
       });
 
@@ -429,21 +447,25 @@ fastify.post('/session', async (request, reply) => {
           required: ['contact_name']
         }
       },
-      {
-        type: 'function',
-        name: 'make_phone_call',
-        description: 'Make a phone call to the supplied phone number.',
-        parameters: {
-          type: 'object',
-          properties: {
-            phone_number: {
-              type: 'string',
-              description: 'Phone number in international E.164 format, for example +96279...'
-            }
-          },
-          required: ['phone_number']
-        }
+     {
+  type: 'function',
+  name: 'make_phone_call',
+  description: 'Call a person on behalf of Yanal and deliver a specific message.',
+  parameters: {
+    type: 'object',
+    properties: {
+      phone_number: {
+        type: 'string',
+        description: 'Phone number in international E.164 format, for example +96279...'
+      },
+      message: {
+        type: 'string',
+        description: 'The exact message Yanal wants the assistant to deliver to the person.'
       }
+    },
+    required: ['phone_number', 'message']
+  }
+}
     ],
 
     tool_choice: 'auto',
@@ -519,7 +541,7 @@ fastify.post('/assistant/find-contact', async (request, reply) => {
 });
 fastify.post('/assistant/make-phone-call', async (request, reply) => {
   try {
-    const { phone_number } = request.body;
+    const { phone_number, message } = request.body;
 
     if (!phone_number) {
       return reply.code(400).send({
@@ -533,7 +555,8 @@ fastify.post('/assistant/make-phone-call', async (request, reply) => {
     const call = await twilioClient.calls.create({
       to: phone_number,
       from: process.env.TWILIO_PHONE_NUMBER,
-      url: 'https://speech-assistant-openai-realtime-api-syjo.onrender.com/outgoing-call'
+url: 'https://speech-assistant-openai-realtime-api-syjo.onrender.com/outgoing-call?message='
+  + encodeURIComponent(message || '')   
     });
 
     console.log('Browser outbound call started:', call.sid);
@@ -866,23 +889,57 @@ if (
                             openAiWs.send(JSON.stringify(audioAppend));
                         }
                         break;
-                    case 'start':
-                        streamSid = data.start.streamSid;
-                        console.log('Incoming stream has started', streamSid);
+                   case 'start': {
+    streamSid = data.start.streamSid;
 
-                        // Reset start and media timestamp on a new stream
-                        responseStartTimestampTwilio = null; 
-                        latestMediaTimestamp = 0;
-                        break;
-                    case 'mark':
-                        if (markQueue.length > 0) {
-                            markQueue.shift();
-                        }
-                        break;
-                    default:
-                        console.log('Received non-media event:', data.event);
-                        break;
-                }
+    const customParameters = data.start.customParameters || {};
+    const callType = customParameters.callType || 'incoming';
+    const outboundMessage = customParameters.message || '';
+
+    console.log('Stream started:', streamSid);
+    console.log('Call type:', callType);
+    console.log('Message to deliver:', outboundMessage);
+
+    // Reset timestamps on a new stream
+    responseStartTimestampTwilio = null;
+    latestMediaTimestamp = 0;
+
+    if (
+        callType === 'outbound' &&
+        openAIWs.readyState === WebSocket.OPEN
+    ) {
+        const outboundInstructions = `
+أنت الآن تجري مكالمة هاتفية صادرة نيابة عن ينال عجيلات.
+
+مهم جداً:
+- الشخص الذي أجاب على الهاتف ليس ينال.
+- عرّف عن نفسك بوضوح بأنك المساعد الذكي الخاص بينال عجيلات.
+- أخبره أنك تتصل نيابة عن ينال.
+- أوصل الرسالة التالية بوضوح وباختصار:
+"${outboundMessage}"
+
+- لا تطلب من الشخص أوامر.
+- لا تتصرف كمساعد شخصي له.
+- بعد توصيل الرسالة اسأله إن كان يريد ترك رد قصير لينال.
+- كن مهذباً وطبيعياً.
+- لا تدّعي أنك إنسان.
+`;
+
+        openAIWs.send(JSON.stringify({
+            type: 'session.update',
+            session: {
+                instructions: outboundInstructions
+            }
+        }));
+
+        // اجعل المساعد يبدأ الكلام فوراً عند الرد
+        openAIWs.send(JSON.stringify({
+            type: 'response.create'
+        }));
+    }
+
+    break;
+}
             } catch (error) {
                 console.error('Error parsing message:', error, 'Message:', message);
             }
@@ -941,10 +998,24 @@ fastify.post('/make-call', async (request, reply) => {
 });
 
 fastify.all('/outgoing-call', async (request, reply) => {
+  const rawMessage = String(request.query?.message || '');
+
+  // حماية النص حتى يدخل داخل TwiML بدون كسر XML
+  const message = rawMessage
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  console.log('Outbound message to deliver:', rawMessage);
+
   const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="wss://${request.headers.host}/media-stream" />
+    <Stream url="wss://${request.headers.host}/media-stream">
+      <Parameter name="callType" value="outbound" />
+      <Parameter name="message" value="${message}" />
+    </Stream>
   </Connect>
 </Response>`;
 
