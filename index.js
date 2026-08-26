@@ -262,13 +262,14 @@ button.addEventListener('click', async () => {
     pc = new RTCPeerConnection();
 
     // 3. Play assistant audio
-    const audio = document.createElement('audio');
-    audio.autoplay = true;
+const audio = document.createElement('audio');
+audio.autoplay = true;
+document.body.appendChild(audio);
 
-    pc.ontrack = (event) => {
-      audio.srcObject = event.streams[0];
-    };
-
+pc.ontrack = (event) => {
+  audio.srcObject = event.streams[0];
+  audio.play().catch(e => console.error("Audio playback error:", e));
+};
     // 4. Ask for microphone access
     localStream = await navigator.mediaDevices.getUserMedia({
       audio: true
