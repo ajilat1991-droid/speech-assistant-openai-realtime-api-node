@@ -120,6 +120,24 @@ fastify.register(async (fastify) => {
                     output: { format: { type: 'audio/pcmu' }, voice: VOICE },
                 },
                 instructions: SYSTEM_MESSAGE,
+                tools: [
+  {
+    type: "function",
+    name: "make_phone_call",
+    description: "Make an outbound phone call when the user asks to call a phone number.",
+    parameters: {
+      type: "object",
+      properties: {
+        phone_number: {
+          type: "string",
+          description: "Phone number in international E.164 format, for example +962791234567"
+        }
+      },
+      required: ["phone_number"]
+    }
+  }
+],
+tool_choice: "auto",
             },
         };
 
@@ -194,7 +212,7 @@ fastify.register(async (fastify) => {
         });
 
         // Listen for messages from the OpenAI WebSocket (and send to Twilio if necessary)
-        openAiWs.on('message', (data) => {
+        openAiWs.on('message', async (data) => {
             try {
                 const response = JSON.parse(data);
 
@@ -222,7 +240,61 @@ fastify.register(async (fastify) => {
                     
                     sendMark(connection, streamSid);
                 }
+if (
+  response.type === 'response.function_call_arguments.done' &&
+  response.name === 'make_phone_call'
+) {
+  try {
+    const args = JSON.parse(response.arguments);
+    const phoneNumber = args.phone_number;
 
+    console.log(`AI requested phone call to: ${phoneNumber}`);
+
+    const call = await twilioClient.calls.create({
+      to: phoneNumber,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      url: 'https://speech-assistant-openai-realtime-api-syjo.onrender.com/outgoing-call'
+    });
+
+    console.log(`Outbound call started: ${call.sid}`);
+
+    openAiWs.send(JSON.stringify({
+      type: 'conversation.item.create',
+      item: {
+        type: 'function_call_output',
+        call_id: response.call_id,
+        output: JSON.stringify({
+          success: true,
+          phone_number: phoneNumber,
+          call_sid: call.sid
+        })
+      }
+    }));
+
+    openAiWs.send(JSON.stringify({
+      type: 'response.create'
+    }));
+
+  } catch (error) {
+    console.error('AI phone call failed:', error);
+
+    openAiWs.send(JSON.stringify({
+      type: 'conversation.item.create',
+      item: {
+        type: 'function_call_output',
+        call_id: response.call_id,
+        output: JSON.stringify({
+          success: false,
+          error: error.message
+        })
+      }
+    }));
+
+    openAiWs.send(JSON.stringify({
+      type: 'response.create'
+    }));
+  }
+}
                 if (response.type === 'input_audio_buffer.speech_started') {
                     handleSpeechStartedEvent();
                 }
