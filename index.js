@@ -140,6 +140,23 @@ If this is an outbound phone call:
 بعد إيصال الرسالة اسأله فقط إذا كان يريد ترك رد قصير لينال.
 ثم أنهِ المكالمة بأدب.
 When Yanal asks you to call a person or number, use call_contact exactly once and wait for its result before replying.
+
+قواعد الاستماع والتوقيت:
+- لا تقاطع المتحدث، وانتظر حتى ينهي الجملة أو الفكرة قبل أن ترد.
+- لا تعتبر الوقفة القصيرة وسط الكلام نهايةً للحديث؛ أعطِ المتحدث مجالاً طبيعيًا للتفكير والتصحيح.
+- إذا صحح يانال اسم الشخص أو رقم الهاتف قبل تنفيذ الاتصال، اعتمد آخر اسم أو رقم قاله فقط.
+- إذا قال المتحدث: "لا، قصدي..." أو "صحح الرقم..." أو أعاد الاسم/الرقم، اعتبر المعلومة الجديدة هي الصحيحة.
+- عند وجود شك في الاسم أو الرقم، أعده باختصار للتأكيد قبل تنفيذ الاتصال.
+- لا تنفذ call_contact أثناء أن المستخدم ما زال يتكلم أو يصحح التفاصيل.
+- بعد أن ينتهي الشخص الآخر من كلامه، انتظر لحظة قصيرة طبيعية ثم أجب، ولا تتسابق معه في الكلام.
+
+Listening and timing rules:
+- Never interrupt the speaker. Wait for the person to finish the sentence or thought before responding.
+- Treat short pauses as thinking pauses, not necessarily the end of a turn.
+- If Yanal corrects a contact name or phone number before the call is placed, always use the latest corrected value.
+- If the speaker says "no, I mean..." or corrects/repeats a name or number, replace the previous value with the new one.
+- If a name or number is ambiguous, briefly confirm it before placing the call.
+- Do not call call_contact while the user is still speaking or correcting details.
 `;
 const VOICE = 'alloy';
 const TEMPERATURE = 0.8; // Controls the randomness of the AI's responses
@@ -421,6 +438,15 @@ fastify.post('/session', async (request, reply) => {
     tool_choice: 'auto',
 
     audio: {
+      input: {
+        turn_detection: {
+          type: 'server_vad',
+          threshold: 0.58,
+          prefix_padding_ms: 300,
+          silence_duration_ms: 1100,
+          create_response: true
+        }
+      },
       output: {
         voice: VOICE
       }
@@ -586,7 +612,16 @@ fastify.register(async (fastify) => {
                 model: "gpt-realtime",
                 output_modalities: ["audio"],
                 audio: {
-                    input: { format: { type: 'audio/pcmu' }, turn_detection: { type: "server_vad" } },
+                    input: {
+                        format: { type: 'audio/pcmu' },
+                        turn_detection: {
+                            type: "server_vad",
+                            threshold: 0.58,
+                            prefix_padding_ms: 300,
+                            silence_duration_ms: 1100,
+                            create_response: true
+                        }
+                    },
                     output: { format: { type: 'audio/pcmu' }, voice: VOICE },
                 },
                 instructions: SYSTEM_MESSAGE,
@@ -751,6 +786,11 @@ fastify.register(async (fastify) => {
 - لا تطلب من الشخص أوامر.
 - لا تتصرف كمساعد شخصي له.
 - بعد توصيل الرسالة اسأله إن كان يريد ترك رد قصير لينال.
+- عندما يبدأ الشخص بالكلام، توقف عن الكلام واستمع له حتى ينهي فكرته.
+- لا ترد على وقفة قصيرة؛ أعطه مجالاً ليكمل أو يصحح نفسه.
+- إذا صحح اسمه أو رقم هاتف أو أي معلومة، اعتمد التصحيح الأخير وكرره باختصار للتأكد إذا كان مهماً.
+- لا تقاطعه أثناء إعطاء رقم هاتف أو اسم؛ انتظر حتى يكمله بالكامل.
+- بعد أن ينتهي من الكلام، انتظر لحظة قصيرة طبيعية ثم أجب.
 - كن مهذباً وطبيعياً.
 - لا تدّعي أنك إنسان.
 `;
